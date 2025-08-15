@@ -59,6 +59,38 @@ const commands = [
                 .setRequired(false)),
 
     new SlashCommandBuilder()
+        .setName('تجديد-المتجر')
+        .setDescription('تجديد الغرفة المؤقتة مع إضافة وقت ومنشنات إضافية')
+        .addChannelOption(option =>
+            option.setName('الغرفة')
+                .setDescription('الغرفة المراد تجديدها')
+                .setRequired(true))
+        .addIntegerOption(option =>
+            option.setName('أيام-إضافية')
+                .setDescription('عدد الأيام الإضافية')
+                .setRequired(false)
+                .setMinValue(1)
+                .setMaxValue(30))
+        .addIntegerOption(option =>
+            option.setName('منشنات-everyone-إضافية')
+                .setDescription('عدد منشنات @everyone الإضافية')
+                .setRequired(false)
+                .setMinValue(0)
+                .setMaxValue(10))
+        .addIntegerOption(option =>
+            option.setName('منشنات-here-إضافية')
+                .setDescription('عدد منشنات @here الإضافية')
+                .setRequired(false)
+                .setMinValue(0)
+                .setMaxValue(10))
+        .addIntegerOption(option =>
+            option.setName('منشنات-متجر-إضافية')
+                .setDescription('عدد منشنات المتجر الإضافية')
+                .setRequired(false)
+                .setMinValue(0)
+                .setMaxValue(10)),
+
+    new SlashCommandBuilder()
         .setName('set-permissions')
         .setDescription('تحديد من يمكنه استخدام أمر إنشاء الغرف')
         .addUserOption(option =>
@@ -156,6 +188,99 @@ client.on('interactionCreate', async interaction => {
         if (role) response += `• الرتبة: ${role.name}\n`;
 
         await interaction.reply({ content: response, ephemeral: true });
+    }
+
+    if (commandName === 'تجديد-المتجر') {
+        // التحقق من الصلاحيات
+        const guildId = interaction.guild.id;
+        const userId = interaction.user.id;
+        const memberRoles = interaction.member.roles.cache.map(role => role.id);
+
+        if (allowedUsers.has(guildId)) {
+            const allowed = allowedUsers.get(guildId);
+            const hasUserPermission = allowed.users.includes(userId);
+            const hasRolePermission = allowed.roles.some(roleId => memberRoles.includes(roleId));
+            
+            if (!hasUserPermission && !hasRolePermission && !interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+                return interaction.reply({ content: 'ليس لديك صلاحية لاستخدام هذا الأمر!', ephemeral: true });
+            }
+        } else if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+            return interaction.reply({ content: 'ليس لديك صلاحية لاستخدام هذا الأمر!', ephemeral: true });
+        }
+
+        const channel = interaction.options.getChannel('الغرفة');
+        const additionalDays = interaction.options.getInteger('أيام-إضافية') || 0;
+        const additionalEveryone = interaction.options.getInteger('منشنات-everyone-إضافية') || 0;
+        const additionalHere = interaction.options.getInteger('منشنات-here-إضافية') || 0;
+        const additionalShop = interaction.options.getInteger('منشنات-متجر-إضافية') || 0;
+
+        const roomData = tempRooms.get(channel.id);
+        if (!roomData) {
+            return interaction.reply({ content: 'هذه الغرفة ليست غرفة مؤقتة!', ephemeral: true });
+        }
+
+        // تحديث بيانات الغرفة
+        if (additionalDays > 0) {
+            roomData.duration += additionalDays * 24 * 60 * 60 * 1000;
+        }
+        if (additionalEveryone > 0) {
+            roomData.everyoneMentions += additionalEveryone;
+        }
+        if (additionalHere > 0) {
+            roomData.hereMentions += additionalHere;
+        }
+        if (additionalShop > 0) {
+            roomData.shopMentions += additionalShop;
+        }
+
+        tempRooms.set(channel.id, roomData);
+
+        // حساب الوقت المتبقي
+        const timeLeft = roomData.duration - (Date.now() - roomData.createdAt);
+        const daysLeft = Math.ceil(timeLeft / (24 * 60 * 60 * 1000));
+        
+        // الحصول على العدادات الحالية
+        const mentionKey = `${channel.id}-${roomData.userId}`;
+        const currentCounts = mentionCounts.get(mentionKey) || { everyone: 0, here: 0, shop: 0 };
+
+        // إنشاء رسالة الإيمبد المحدثة
+        const embed = new EmbedBuilder()
+            .setTitle('🔄 تم تجديد الغرفة المؤقتة')
+            .setColor(0x00AE86)
+            .addFields(
+                { name: '👤 المستخدم المختار', value: `<@${roomData.userId}>`, inline: true },
+                { name: '📅 الوقت المتبقي', value: `${daysLeft} أيام`, inline: true },
+                { name: '🌍 منشنات @everyone', value: `${currentCounts.everyone}/${roomData.everyoneMentions}`, inline: true },
+                { name: '📍 منشنات @here', value: `${currentCounts.here}/${roomData.hereMentions}`, inline: true }
+            );
+
+        if (roomData.shopRole) {
+            embed.addFields(
+                { name: '🏪 رتبة المتجر', value: `<@&${roomData.shopRole}>`, inline: true },
+                { name: '🛒 منشنات المتجر', value: `${currentCounts.shop}/${roomData.shopMentions}`, inline: true }
+            );
+        }
+
+        if (additionalDays > 0 || additionalEveryone > 0 || additionalHere > 0 || additionalShop > 0) {
+            let renewalText = '✅ **تم إضافة:**\n';
+            if (additionalDays > 0) renewalText += `• ${additionalDays} أيام إضافية\n`;
+            if (additionalEveryone > 0) renewalText += `• ${additionalEveryone} منشنات @everyone إضافية\n`;
+            if (additionalHere > 0) renewalText += `• ${additionalHere} منشنات @here إضافية\n`;
+            if (additionalShop > 0) renewalText += `• ${additionalShop} منشنات متجر إضافية\n`;
+            
+            embed.addFields({ name: '🆕 التجديد', value: renewalText, inline: false });
+        }
+
+        embed.addFields(
+            { name: '⚠️ تحذير', value: 'إذا تم تجاوز العدد المسموح من المنشنات، ستتم إزالة صلاحياتك أو حذف الغرفة!', inline: false }
+        );
+
+        embed.setTimestamp();
+
+        // إرسال الرسالة المحدثة في الغرفة
+        await channel.send({ embeds: [embed] });
+
+        await interaction.reply({ content: `تم تجديد الغرفة <#${channel.id}> بنجاح!`, ephemeral: true });
     }
 
     if (commandName === 'create-room') {
@@ -293,6 +418,10 @@ client.on('messageCreate', async message => {
         if (currentCounts.everyone > roomData.everyoneMentions) {
             violationOccurred = true;
         }
+        
+        // إرسال رسالة تحديث العداد
+        const remainingEveryone = Math.max(0, roomData.everyoneMentions - currentCounts.everyone);
+        await message.reply(`📊 تم استخدام منشن @everyone\nالمتبقي: ${remainingEveryone}/${roomData.everyoneMentions}`);
     }
 
     // التحقق من منشنات @here
@@ -301,6 +430,10 @@ client.on('messageCreate', async message => {
         if (currentCounts.here > roomData.hereMentions) {
             violationOccurred = true;
         }
+        
+        // إرسال رسالة تحديث العداد
+        const remainingHere = Math.max(0, roomData.hereMentions - currentCounts.here);
+        await message.reply(`📊 تم استخدام منشن @here\nالمتبقي: ${remainingHere}/${roomData.hereMentions}`);
     }
 
     // التحقق من منشنات المتجر
@@ -309,6 +442,10 @@ client.on('messageCreate', async message => {
         if (currentCounts.shop > roomData.shopMentions) {
             violationOccurred = true;
         }
+        
+        // إرسال رسالة تحديث العداد
+        const remainingShop = Math.max(0, roomData.shopMentions - currentCounts.shop);
+        await message.reply(`📊 تم استخدام منشن المتجر\nالمتبقي: ${remainingShop}/${roomData.shopMentions}`);
     }
 
     // التحقق من استنفاد جميع المنشنات المسموحة
@@ -363,4 +500,4 @@ server.listen(PORT, '0.0.0.0', () => {
 });
 
 client.login(process.env.DISCORD_BOT_TOKEN);
-        
+            
