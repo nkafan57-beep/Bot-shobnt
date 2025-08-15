@@ -1,5 +1,6 @@
 
 const { Client, GatewayIntentBits, SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ChannelType, REST, Routes } = require('discord.js');
+const http = require('http');
 
 const client = new Client({
     intents: [
@@ -88,6 +89,36 @@ client.once('ready', async () => {
     } catch (error) {
         console.error('خطأ في تحديث الأوامر:', error);
     }
+
+    // إعداد حالة البوت مع تدوير الرسائل
+    const statusMessages = [
+        'ntl studio',
+        'developer ntlkafan',
+        'create by ntl server'
+    ];
+    
+    let currentIndex = 0;
+    
+    // تعيين الحالة الأولى
+    client.user.setPresence({
+        activities: [{
+            name: statusMessages[currentIndex],
+            type: 3 // PLAYING
+        }],
+        status: 'online'
+    });
+    
+    // تدوير الرسائل كل 10 ثوان
+    setInterval(() => {
+        currentIndex = (currentIndex + 1) % statusMessages.length;
+        client.user.setPresence({
+            activities: [{
+                name: statusMessages[currentIndex],
+                type: 3 // PLAYING
+            }],
+            status: 'online'
+        });
+    }, 10000); // 10 ثوان
 });
 
 client.on('interactionCreate', async interaction => {
@@ -320,4 +351,16 @@ if (!process.env.DISCORD_BOT_TOKEN) {
     process.exit(1);
 }
 
+// إنشاء HTTP server بسيط للحفاظ على البوت نشطًا
+const server = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('🤖 Discord Bot is running!\nبوت ديسكورد يعمل بنجاح!');
+});
+
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`HTTP Server is running on port ${PORT}`);
+});
+
 client.login(process.env.DISCORD_BOT_TOKEN);
+        
