@@ -1,4 +1,3 @@
-
 const { Client, GatewayIntentBits, SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, ChannelType, REST, Routes } = require('discord.js');
 const http = require('http');
 
@@ -105,18 +104,18 @@ const commands = [
 
 client.once('ready', async () => {
     console.log(`تم تسجيل الدخول كـ ${client.user.tag}!`);
-    
+
     // تسجيل الأوامر
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
-    
+
     try {
         console.log('بدء تحديث أوامر السلاش...');
-        
+
         await rest.put(
             Routes.applicationCommands(client.user.id),
             { body: commands }
         );
-        
+
         console.log('تم تحديث أوامر السلاش بنجاح!');
     } catch (error) {
         console.error('خطأ في تحديث الأوامر:', error);
@@ -128,9 +127,9 @@ client.once('ready', async () => {
         'developer ntlkafan',
         'create by ntl server'
     ];
-    
+
     let currentIndex = 0;
-    
+
     // تعيين الحالة الأولى
     client.user.setPresence({
         activities: [{
@@ -139,7 +138,7 @@ client.once('ready', async () => {
         }],
         status: 'online'
     });
-    
+
     // تدوير الرسائل كل 10 ثوان
     setInterval(() => {
         currentIndex = (currentIndex + 1) % statusMessages.length;
@@ -200,7 +199,7 @@ client.on('interactionCreate', async interaction => {
             const allowed = allowedUsers.get(guildId);
             const hasUserPermission = allowed.users.includes(userId);
             const hasRolePermission = allowed.roles.some(roleId => memberRoles.includes(roleId));
-            
+
             if (!hasUserPermission && !hasRolePermission && !interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
                 return interaction.reply({ content: 'ليس لديك صلاحية لاستخدام هذا الأمر!', ephemeral: true });
             }
@@ -238,7 +237,7 @@ client.on('interactionCreate', async interaction => {
         // حساب الوقت المتبقي
         const timeLeft = roomData.duration - (Date.now() - roomData.createdAt);
         const daysLeft = Math.ceil(timeLeft / (24 * 60 * 60 * 1000));
-        
+
         // الحصول على العدادات الحالية
         const mentionKey = `${channel.id}-${roomData.userId}`;
         const currentCounts = mentionCounts.get(mentionKey) || { everyone: 0, here: 0, shop: 0 };
@@ -267,7 +266,7 @@ client.on('interactionCreate', async interaction => {
             if (additionalEveryone > 0) renewalText += `• ${additionalEveryone} منشنات @everyone إضافية\n`;
             if (additionalHere > 0) renewalText += `• ${additionalHere} منشنات @here إضافية\n`;
             if (additionalShop > 0) renewalText += `• ${additionalShop} منشنات متجر إضافية\n`;
-            
+
             embed.addFields({ name: '🆕 التجديد', value: renewalText, inline: false });
         }
 
@@ -278,7 +277,8 @@ client.on('interactionCreate', async interaction => {
         embed.setTimestamp();
 
         // إرسال الرسالة المحدثة في الغرفة
-        await channel.send({ embeds: [embed] });
+        const originalMessage = await channel.messages.fetch(roomData.messageId);
+        await originalMessage.edit({ embeds: [embed] });
 
         await interaction.reply({ content: `تم تجديد الغرفة <#${channel.id}> بنجاح!`, ephemeral: true });
     }
@@ -293,7 +293,7 @@ client.on('interactionCreate', async interaction => {
             const allowed = allowedUsers.get(guildId);
             const hasUserPermission = allowed.users.includes(userId);
             const hasRolePermission = allowed.roles.some(roleId => memberRoles.includes(roleId));
-            
+
             if (!hasUserPermission && !hasRolePermission && !interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
                 return interaction.reply({ content: 'ليس لديك صلاحية لاستخدام هذا الأمر!', ephemeral: true });
             }
@@ -330,7 +330,32 @@ client.on('interactionCreate', async interaction => {
                 ],
             });
 
-            // حفظ معلومات الغرفة
+            // إنشاء رسالة الإيمبد
+            const embed = new EmbedBuilder()
+                .setTitle('🏠 تم إنشاء الغرفة المؤقتة')
+                .setColor(0x00AE86)
+                .addFields(
+                    { name: '👤 المستخدم المختار', value: `<@${targetUser.id}>`, inline: true },
+                    { name: '📅 مدة الغرفة', value: `${durationDays} أيام`, inline: true },
+                    { name: '🌍 منشنات @everyone', value: `0/${everyoneMentions}`, inline: true },
+                    { name: '📍 منشنات @here', value: `0/${hereMentions}`, inline: true }
+                )
+                .setTimestamp();
+
+            if (shopRole) {
+                embed.addFields(
+                    { name: '🏪 رتبة المتجر', value: `<@&${shopRole.id}>`, inline: true },
+                    { name: '🛒 منشنات المتجر', value: `0/${shopMentions}`, inline: true }
+                );
+            }
+
+            embed.addFields(
+                { name: '⚠️ تحذير', value: 'إذا تم تجاوز العدد المسموح من المنشنات، ستتم إزالة صلاحياتك أو حذف الغرفة!', inline: false }
+            );
+
+            const sentMessage = await channel.send({ embeds: [embed] });
+
+            // حفظ معلومات الغرفة مع معرف الرسالة
             const roomData = {
                 channelId: channel.id,
                 userId: targetUser.id,
@@ -340,7 +365,8 @@ client.on('interactionCreate', async interaction => {
                 shopMentions: shopMentions,
                 createdAt: Date.now(),
                 duration: durationDays * 24 * 60 * 60 * 1000, // تحويل إلى ميلي ثانية
-                creatorId: interaction.user.id
+                creatorId: interaction.user.id,
+                messageId: sentMessage.id // حفظ معرف الرسالة
             };
 
             tempRooms.set(channel.id, roomData);
@@ -349,31 +375,6 @@ client.on('interactionCreate', async interaction => {
                 here: 0,
                 shop: 0
             });
-
-            // إنشاء رسالة الإيمبد
-            const embed = new EmbedBuilder()
-                .setTitle('🏠 تم إنشاء الغرفة المؤقتة')
-                .setColor(0x00AE86)
-                .addFields(
-                    { name: '👤 المستخدم المختار', value: `<@${targetUser.id}>`, inline: true },
-                    { name: '📅 مدة الغرفة', value: `${durationDays} أيام`, inline: true },
-                    { name: '🌍 منشنات @everyone', value: `${everyoneMentions}`, inline: true },
-                    { name: '📍 منشنات @here', value: `${hereMentions}`, inline: true }
-                )
-                .setTimestamp();
-
-            if (shopRole) {
-                embed.addFields(
-                    { name: '🏪 رتبة المتجر', value: `<@&${shopRole.id}>`, inline: true },
-                    { name: '🛒 منشنات المتجر', value: `${shopMentions}`, inline: true }
-                );
-            }
-
-            embed.addFields(
-                { name: '⚠️ تحذير', value: 'إذا تم تجاوز العدد المسموح من المنشنات، ستتم إزالة صلاحياتك أو حذف الغرفة!', inline: false }
-            );
-
-            await channel.send({ embeds: [embed] });
 
             // جدولة حذف الغرفة
             setTimeout(async () => {
@@ -398,7 +399,7 @@ client.on('messageCreate', async message => {
 
     const channelId = message.channel.id;
     const roomData = tempRooms.get(channelId);
-    
+
     if (!roomData) return;
 
     // التحقق من أن المرسل هو المستخدم المخول
@@ -418,7 +419,7 @@ client.on('messageCreate', async message => {
         if (currentCounts.everyone > roomData.everyoneMentions) {
             violationOccurred = true;
         }
-        
+
         // إرسال رسالة تحديث العداد
         const remainingEveryone = Math.max(0, roomData.everyoneMentions - currentCounts.everyone);
         await message.reply(`📊 تم استخدام منشن @everyone\nالمتبقي: ${remainingEveryone}/${roomData.everyoneMentions}`);
@@ -430,7 +431,7 @@ client.on('messageCreate', async message => {
         if (currentCounts.here > roomData.hereMentions) {
             violationOccurred = true;
         }
-        
+
         // إرسال رسالة تحديث العداد
         const remainingHere = Math.max(0, roomData.hereMentions - currentCounts.here);
         await message.reply(`📊 تم استخدام منشن @here\nالمتبقي: ${remainingHere}/${roomData.hereMentions}`);
@@ -442,15 +443,15 @@ client.on('messageCreate', async message => {
         if (currentCounts.shop > roomData.shopMentions) {
             violationOccurred = true;
         }
-        
+
         // إرسال رسالة تحديث العداد
         const remainingShop = Math.max(0, roomData.shopMentions - currentCounts.shop);
         await message.reply(`📊 تم استخدام منشن المتجر\nالمتبقي: ${remainingShop}/${roomData.shopMentions}`);
     }
 
     // التحقق من استنفاد جميع المنشنات المسموحة
-    if (currentCounts.everyone >= roomData.everyoneMentions && 
-        currentCounts.here >= roomData.hereMentions && 
+    if (currentCounts.everyone >= roomData.everyoneMentions &&
+        currentCounts.here >= roomData.hereMentions &&
         currentCounts.shop >= roomData.shopMentions) {
         removePermissions = true;
     }
@@ -462,9 +463,11 @@ client.on('messageCreate', async message => {
         // حذف الغرفة عند المخالفة
         await message.channel.send('❌ تم تجاوز العدد المسموح من المنشنات! سيتم حذف الغرفة...');
         setTimeout(async () => {
-            await message.channel.delete();
-            tempRooms.delete(channelId);
-            mentionCounts.delete(mentionKey);
+            if (tempRooms.has(channelId)) { // Check if the room still exists before deleting
+                await message.channel.delete();
+                tempRooms.delete(channelId);
+                mentionCounts.delete(mentionKey);
+            }
         }, 3000);
     } else if (removePermissions) {
         // إزالة صلاحيات المنشن عند استنفاد جميع المنشنات
@@ -476,28 +479,17 @@ client.on('messageCreate', async message => {
         } catch (error) {
             console.error('خطأ في إزالة الصلاحيات:', error);
         }
-    }
-});
+    } else {
+        // تحديث الإيمبد بعد استخدام المنشنات
+        const embed = new EmbedBuilder()
+            .setTitle('🏠 تم إنشاء الغرفة المؤقتة')
+            .setColor(0x00AE86)
+            .addFields(
+                { name: '👤 المستخدم المختار', value: `<@${roomData.userId}>`, inline: true },
+                { name: '📅 الوقت المتبقي', value: `${Math.ceil((roomData.duration - (Date.now() - roomData.createdAt)) / (24 * 60 * 60 * 1000))} أيام`, inline: true },
+                { name: '🌍 منشنات @everyone', value: `${currentCounts.everyone}/${roomData.everyoneMentions}`, inline: true },
+                { name: '📍 منشنات @here', value: `${currentCounts.here}/${roomData.hereMentions}`, inline: true }
+            );
 
-// التعامل مع الأخطاء
-client.on('error', console.error);
-
-// تسجيل الدخول
-if (!process.env.DISCORD_BOT_TOKEN) {
-    console.error('يرجى إضافة DISCORD_BOT_TOKEN في Secrets!');
-    process.exit(1);
-}
-
-// إنشاء HTTP server بسيط للحفاظ على البوت نشطًا
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('🤖 Discord Bot is running!\nبوت ديسكورد يعمل بنجاح!');
-});
-
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`HTTP Server is running on port ${PORT}`);
-});
-
-client.login(process.env.DISCORD_BOT_TOKEN);
-            
+        if (roomData.shopRole) {
+         
