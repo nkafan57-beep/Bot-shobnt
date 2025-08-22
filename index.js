@@ -507,7 +507,7 @@ client.on('interactionCreate', async interaction => {
         }
     
     } else if (interaction.isButton()) {
-        if if (interaction.customId === 'confirm_delete_channels') {
+        if (interaction.customId === 'confirm_delete_channels') {
             const deleteData = storage.data.tempChannelDelete?.get(interaction.user.id);
 
             if (!deleteData || Date.now() - deleteData.timestamp > 300000) { // 5 دقائق
